@@ -60,7 +60,7 @@ while currentSlot < simulationTime
     currentSlot = currentSlot + 1;
 
     if showProgressBar == 1
-        if getappdata(progressBar,'canceling')
+        if getappdata(progressBar,'canceling') % if user push the delete button
             delete(progressBar);
             fprintf('\nWarning: terminated by user!\n');
             break
@@ -68,25 +68,29 @@ while currentSlot < simulationTime
         waitbar(currentSlot / simulationTime,progressBar,sprintf('Packets sent: %u; packets acknowledged: %u.',pcktTransmissionAttempts,ackdPacketCount));
     end
 
+    % loop over the sourceStatus vector and check out if is ready or not
+    % If is ready, change to status 1 and make backoff count
+    % Also write currentslot to the timestamp -언제 packet ready가 되었는지 기록
     for eachSource1 = 1:length(sourceStatus)
         if sourceStatus(1,eachSource1) == 0 && rand(1) <= packetReadyProb % new packet
             sourceStatus(1,eachSource1) = 1;
-            sourceBackoff(1,eachSource1) = randi(maxBackoff,1);
-            pcktGenerationTimestamp(1,eachSource1)=currentSlot;
+            sourceBackoff(1,eachSource1) = randi(maxBackoff,1); % assign random backoff time from macBackoff of 1x1 matrix
+            pcktGenerationTimestamp(1,eachSource1)=currentSlot; % packet이 생성된 시간을 기록해둠
         elseif sourceStatus(1,eachSource1)==1 % backlogged packet
             sourceBackoff(1,eachSource1)=randi(maxBackoff,1);
         end
     end
 
-    pcktTransmissionAttempts = pcktTransmissionAttempts + sum(sourceStatus == 1);
-
-    if sum(sourceStatus == 1) == 1
+    pcktTransmissionAttempts = pcktTransmissionAttempts + sum(sourceStatus == 1); % 보내려고 ready된 애들의 개수를 더하여 transimission attempt로 계산
+    
+    % when packet doesn't collide
+    if sum(sourceStatus == 1) == 1 
         ackdPacketCount = ackdPacketCount + 1;
         [~,sourceId] = find(sourceStatus == 1);
-        ackdPacketDelay(ackdPacketCount) = currentSlot - pcktGenerationTimestamp(sourceId);
-    elseif sum(sourceStatus == 1) > 1
+        ackdPacketDelay(ackdPacketCount) = currentSlot - pcktGenerationTimestamp(sourceId); % 현재시간과 packet이 생성된 시간 차이로 delay를 결정
+    elseif sum(sourceStatus == 1) > 1 % collision
         pcktCollisionCount = pcktCollisionCount + 1;
-        sourceStatus  = sourceStatus + sourceBackoff;
+        sourceStatus  = sourceStatus + sourceBackoff; % sources those involved in collision add backoff time
     end
 
     sourceStatus = sourceStatus - 1; % decrease backoff interval
@@ -94,7 +98,10 @@ while currentSlot < simulationTime
     sourceBackoff = zeros(1,sourceNumber);
 end
 
-if currentSlot == simulationTime && showProgressBar == 1
+disp(sourceStatus)
+disp(pcktGenerationTimestamp)
+
+if currentSlot == simulationTime && showProgressBar == 1 % when the process ends
     delete(progressBar);
 end
 
@@ -106,6 +113,8 @@ else
 end
 throughput = ackdPacketCount / currentSlot;
 pcktCollisionProb = pcktCollisionCount / currentSlot;
+
+fprintf('\nSimulation time: %.3f, \nCurrent slot: %.3f, \nAcked packet cnt: %.3f, \nPacket collision cnt: %.3f .',simulationTime,currentSlot,ackdPacketCount,pcktCollisionCount);
 
 if exist('niceOutput','var') && niceOutput == 1
     fprintf('\nTraffic offered (G): %.3f,\nThroughput (S): %.3f,\nMean delay (D): %.2f slots,\nCollision probability (P_c): %.3f.\n',trafficOffered,throughput,meanDelay,pcktCollisionProb);
